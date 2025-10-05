@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MetroScheduler.Infrastructure")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+34c3460989984608ca6cc82fab50fe9c90361e15")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7afa6d14dc0fb8a20d2aeb0325681c870b97a5a5")]
 [assembly: System.Reflection.AssemblyProductAttribute("MetroScheduler.Infrastructure")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MetroScheduler.Infrastructure")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

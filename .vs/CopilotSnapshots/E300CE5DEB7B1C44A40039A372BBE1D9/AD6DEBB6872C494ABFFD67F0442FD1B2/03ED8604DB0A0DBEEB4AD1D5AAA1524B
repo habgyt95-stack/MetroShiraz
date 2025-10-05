@@ -1,0 +1,83 @@
+﻿using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Infrastructure;
+using MetroScheduler.Domain.Entities;
+
+namespace MetroScheduler.Pages;
+
+public class IndexModel : PageModel
+{
+    private readonly IDbContextFactory<MetroDbContext> _dbFactory;
+
+    public IndexModel(IDbContextFactory<MetroDbContext> dbFactory)
+    {
+        _dbFactory = dbFactory;
+    }
+
+    public List<MetroLine> Lines { get; private set; } = new();
+    public List<MetroStation> Stations { get; private set; } = new();
+    public List<MetroFullSchedule> FullSchedules { get; private set; } = new();
+
+    public string? SelectedLineId { get; set; }
+    public string? SelectedOriginId { get; set; }
+    public string? SelectedDestId { get; set; }
+    public bool IsHoliday { get; set; }
+
+    public async Task OnGet(string? selectedLineId, string? selectedOriginId, string? selectedDestId, bool? isHoliday)
+    {
+        SelectedLineId = selectedLineId;
+        SelectedOriginId = selectedOriginId;
+        SelectedDestId = selectedDestId;
+        IsHoliday = isHoliday ?? false;
+
+        using var db = _dbFactory.CreateDbContext();
+        Lines = await db.MetroLines.AsNoTracking().OrderBy(l => l.Number).ThenBy(l => l.Name).ToListAsync();
+
+        if (!string.IsNullOrEmpty(SelectedLineId))
+        {
+            Stations = await db.MetroStations.AsNoTracking()
+                .Where(s => s.MetroLineId == SelectedLineId)
+                .OrderBy(s => s.OrderIndex)
+                .ToListAsync();
+
+            if (!string.IsNullOrEmpty(SelectedOriginId) && !string.IsNullOrEmpty(SelectedDestId))
+            {
+                var orderById = Stations.Select((s, idx) => new { s.Id, idx }).ToDictionary(x => x.Id, x => x.idx);
+                if (!orderById.TryGetValue(SelectedOriginId, out var originIdx) || !orderById.TryGetValue(SelectedDestId, out var destIdx))
+                {
+                    FullSchedules = new();
+                    return;
+                }
+                var forward = destIdx >= originIdx;
+                var terminalWanted = forward ? Stations.Last().Name : Stations.First().Name;
+
+                var baseQuery = db.MetroFullSchedules.AsNoTracking()
+                    .Where(f => f.LineId == SelectedLineId && f.IsHoliday == IsHoliday &&
+                                f.StationIdOrigin == SelectedOriginId && f.StationIdDestination == SelectedDestId);
+
+                var dirQuery = baseQuery.Where(f => f.EndStation == terminalWanted);
+                var listNo = await dirQuery.Select(f => f.ListNo).DefaultIfEmpty(0).MaxAsync();
+                if (listNo == 0)
+                    listNo = await baseQuery.Select(f => f.ListNo).DefaultIfEmpty(0).MaxAsync();
+                if (listNo == 0)
+                {
+                    FullSchedules = new();
+                    return;
+                }
+
+                FullSchedules = await baseQuery
+                    .Where(f => f.ListNo == listNo && f.EndStation == terminalWanted)
+                    .OrderBy(f => f.TrainNumber)
+                    .ToListAsync();
+
+                if (FullSchedules.Count == 0)
+                {
+                    FullSchedules = await baseQuery
+                        .Where(f => f.ListNo == listNo)
+                        .OrderBy(f => f.TrainNumber)
+                        .ToListAsync();
+                }
+            }
+        }
+    }
+}

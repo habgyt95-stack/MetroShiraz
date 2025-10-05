@@ -1,0 +1,56 @@
+﻿@page
+@model MetroScheduler.Pages.IndexModel
+@{
+    ViewData["Title"] = "Metro Scheduler";
+}
+
+<h2>?????????</h2>
+<form method="get">
+    <div>
+        <label for="line">??:</label>
+        <select id="line" name="SelectedLineId" onchange="this.form.submit()">
+            <option value="">-- ?????? ?? --</option>
+            @foreach (var l in Model.Lines)
+            {
+                <option value="@l.Id" selected="@(Model.SelectedLineId == l.Id ? "selected" : null)">@l.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label for="origin">????:</label>
+        <select id="origin" name="SelectedOriginId">
+            <option value="">-- ?????? ???? --</option>
+            @foreach (var s in Model.Stations)
+            {
+                <option value="@s.Id" selected="@(Model.SelectedOriginId == s.Id ? "selected" : null)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label for="dest">????:</label>
+        <select id="dest" name="SelectedDestId">
+            <option value="">-- ?????? ???? --</option>
+            @foreach (var s in Model.Stations)
+            {
+                <option value="@s.Id" selected="@(Model.SelectedDestId == s.Id ? "selected" : null)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label for="holiday">????? ????</label>
+        <select id="holiday" name="IsHoliday">
+            <option value="false" selected="@(!Model.IsHoliday ? "selected" : null)">??? ?????</option>
+            <option value="true" selected="@(Model.IsHoliday ? "selected" : null)">?????</option>
+        </select>
+    </div>
+
+    <div style="margin-top:10px;">
+        <button type="submit">?????</button>
+    </div>
+</form>
+
+<hr />
+<h4>????? ????????? (????)</h4>
+<div id="schedule-grid">
+    <!-- ???? ???????? ?? ????? ????? ?????? -->
+</div>

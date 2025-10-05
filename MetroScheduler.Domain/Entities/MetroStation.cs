@@ -1,0 +1,26 @@
+using System.Text.Json.Serialization;
+
+namespace MetroScheduler.Domain.Entities;
+
+public sealed class MetroStation
+{
+    [JsonPropertyName("_id")] public string Id { get; set; } = default!;
+    public string? Name { get; set; }
+    public string? Address { get; set; }
+    public string? Description { get; set; }
+    public bool? Deleted { get; set; }
+    public bool? IsActive { get; set; }
+    public bool? CitizenCanView { get; set; }
+    public GeoLocation? Location { get; set; }
+
+    // From list endpoints
+    public string? MetroLineId { get; set; }
+
+    // Order of station within a line (as returned by API lists)
+    public int? OrderIndex { get; set; }
+
+    // Audit
+    public DateTimeOffset? CreatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public int? __v { get; set; }
+}

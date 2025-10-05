@@ -1,0 +1,76 @@
+﻿using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Infrastructure;
+using MetroScheduler.Infrastructure.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// EF Core SQL Server
+var connStr = builder.Configuration.GetConnectionString("Default")
+              ?? "Server=(localdb)\\MSSQLLocalDB;Database=MetroScheduler;Trusted_Connection=True;TrustServerCertificate=True;";
+
+builder.Services.AddDbContext<MetroDbContext>(opt =>
+    opt.UseSqlServer(connStr));
+
+// HttpClient for Sarv API with Authorization header from config
+var token = builder.Configuration["Sarv:Authorization"] ?? "6b87277da5b047bd9b680122e943df3d9eba1626bd424dd993589322e09d6f9f";
+builder.Services.AddHttpClient("Sarv", client =>
+{
+    client.BaseAddress = new Uri("https://api-sarv.shiraz.ir");
+    client.DefaultRequestHeaders.Add("Authorization", token);
+});
+
+builder.Services.AddScoped<IMetroUpsertService, MetroUpsertService>();
+
+// Background scheduler every 30 minutes
+builder.Services.AddHostedService<PeriodicRefreshHostedService>();
+
+var app = builder.Build();
+
+app.MapGet("/health", () => "OK");
+
+app.Run();
+
+public sealed class PeriodicRefreshHostedService : BackgroundService
+{
+    private readonly IServiceProvider _sp;
+    private readonly ILogger<PeriodicRefreshHostedService> _logger;
+
+    public PeriodicRefreshHostedService(IServiceProvider sp, ILogger<PeriodicRefreshHostedService> logger)
+    {
+        _sp = sp;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        // Run once at startup
+        await RunOnce(stoppingToken);
+
+        // Then every 30 minutes
+        var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                await RunOnce(stoppingToken);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task RunOnce(CancellationToken ct)
+    {
+        using var scope = _sp.CreateScope();
+        var upserter = scope.ServiceProvider.GetRequiredService<IMetroUpsertService>();
+        try
+        {
+            _logger.LogInformation("Starting metro data refresh at {Time}", DateTimeOffset.Now);
+            await upserter.RunFullRefreshAsync(ct);
+            _logger.LogInformation("Finished metro data refresh at {Time}", DateTimeOffset.Now);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Metro data refresh failed");
+        }
+    }
+}

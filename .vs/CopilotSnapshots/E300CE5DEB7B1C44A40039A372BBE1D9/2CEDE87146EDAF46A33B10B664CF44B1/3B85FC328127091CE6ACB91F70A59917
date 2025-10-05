@@ -1,0 +1,174 @@
+﻿using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Domain.Entities;
+using System.Diagnostics;
+
+namespace MetroScheduler.Infrastructure.Services;
+
+public interface IMetroFullScheduleBuilder
+{
+    Task BuildAsync(string lineId, bool isHoliday, CancellationToken ct = default);
+    Task BuildAllAsync(CancellationToken ct = default);
+}
+
+public sealed class MetroFullScheduleBuilder : IMetroFullScheduleBuilder
+{
+    private readonly MetroDbContext _db;
+
+    public MetroFullScheduleBuilder(MetroDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task BuildAllAsync(CancellationToken ct = default)
+    {
+        var lineIds = await _db.MetroLines.AsNoTracking().Select(l => l.Id).ToListAsync(ct);
+        int totalSteps = lineIds.Count * 2;
+        int currentStep = 0;
+        var sw = Stopwatch.StartNew();
+        foreach (var lineId in lineIds)
+        {
+            currentStep++;
+            Console.WriteLine($"[MetroFullSchedule] {currentStep * 100 / totalSteps,3}% - Line {lineId} (IsHoliday=false)");
+            await BuildAsync(lineId, false, ct);
+            var elapsed = sw.Elapsed;
+            var eta = TimeSpan.FromTicks(elapsed.Ticks * (totalSteps - currentStep) / currentStep);
+            Console.WriteLine($@"[MetroFullSchedule] Done {currentStep}/{totalSteps} | Elapsed: {elapsed:mm\:ss} | ETA: {eta:mm\:ss}");
+
+            currentStep++;
+            Console.WriteLine($"[MetroFullSchedule] {currentStep * 100 / totalSteps,3}% - Line {lineId} (IsHoliday=true)");
+            await BuildAsync(lineId, true, ct);
+            elapsed = sw.Elapsed;
+            eta = TimeSpan.FromTicks(elapsed.Ticks * (totalSteps - currentStep) / currentStep);
+            Console.WriteLine($@"[MetroFullSchedule] Done {currentStep}/{totalSteps} | Elapsed: {elapsed:mm\:ss} | ETA: {eta:mm\:ss}");
+        }
+        sw.Stop();
+        Console.WriteLine($"[MetroFullSchedule] All done in {sw.Elapsed:mm\\:ss}");
+    }
+
+    public async Task BuildAsync(string lineId, bool isHoliday, CancellationToken ct = default)
+    {
+        var stations = await _db.MetroStations.AsNoTracking()
+            .Where(s => s.MetroLineId == lineId)
+            .OrderBy(s => s.OrderIndex).ThenBy(s => s.Name)
+            .ToListAsync(ct);
+        if (stations.Count == 0) return;
+
+        var line = await _db.MetroLines.AsNoTracking().FirstOrDefaultAsync(l => l.Id == lineId, ct);
+        var schedulesByStation = new Dictionary<string, List<StationSchedule>>();
+        foreach (var st in stations)
+        {
+            var sch = await _db.StationSchedules.AsNoTracking()
+                .Where(x => x.StationId == st.Id && x.IsHoliday == isHoliday)
+                .OrderBy(x => x.ListNo)
+                .ToListAsync(ct);
+            schedulesByStation[st.Id] = sch;
+        }
+
+        var listCount = schedulesByStation.Values.Select(v => v.Select(s => s.ListNo).Distinct().Count()).Distinct().SingleOrDefault();
+        if (listCount == 0) return;
+
+        _db.MetroFullSchedules.RemoveRange(_db.MetroFullSchedules.Where(f => f.LineId == lineId && f.IsHoliday == isHoliday));
+
+        int totalLists = listCount;
+        int totalRows = 0;
+        foreach (var st in stations)
+        {
+            var sch = schedulesByStation[st.Id].FirstOrDefault();
+            if (sch != null && sch.StartTimeToEndStation != null)
+                totalRows = Math.Max(totalRows, sch.StartTimeToEndStation.Count);
+        }
+        int totalSteps = totalLists * totalRows;
+        int currentStep = 0;
+        var sw = Stopwatch.StartNew();
+
+        for (int listNo = 1; listNo <= listCount; listNo++)
+        {
+            var no = listNo;
+            var schedulePerStation = stations
+                .Select(st => schedulesByStation[st.Id].First(s => s.ListNo == no))
+                .ToList();
+
+            var rowsPerStation = schedulePerStation.Select(s => s.StartTimeToEndStation).ToList();
+            var schedulesNumber = rowsPerStation.First().Count;
+
+            for (int rowIndex = 0; rowIndex < schedulesNumber; rowIndex++)
+            {
+                var trainNumber = (long)(rowIndex + 1);
+
+                // --- Forward direction (originIdx <= destIdx) ---
+                var terminalForward = stations.Last().Name;
+                for (int originIdx = 0; originIdx < stations.Count; originIdx++)
+                {
+                    var origin = stations[originIdx];
+                    var originSch = schedulePerStation[originIdx];
+                    var originTime = rowsPerStation[originIdx][rowIndex];
+                    for (int destIdx = originIdx; destIdx < stations.Count; destIdx++)
+                    {
+                        var dest = stations[destIdx];
+                        var destTime = rowsPerStation[destIdx][rowIndex];
+                        _db.MetroFullSchedules.Add(new MetroFullSchedule
+                        {
+                            TrainNumber = trainNumber,
+                            ListNo = listNo,
+                            EndStation = terminalForward,
+                            TimeOrigin = originTime,
+                            TimeDestination = destTime,
+                            IsHoliday = isHoliday,
+                            LineId = line?.Id,
+                            LineName = line?.Name,
+                            StationIdOrigin = origin.Id,
+                            StationIdDestination = dest.Id,
+                            StationNameOrigin = origin.Name,
+                            StationNameDestination = dest.Name,
+                            SchedulesNumber = schedulesNumber,
+                            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            LastUpdated = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                        });
+                    }
+                }
+
+                // --- Backward direction (originIdx >= destIdx) ---
+                var terminalBackward = stations.First().Name;
+                for (int originIdx = stations.Count - 1; originIdx >= 0; originIdx--)
+                {
+                    var origin = stations[originIdx];
+                    var originSch = schedulePerStation[originIdx];
+                    var originTime = rowsPerStation[originIdx][rowIndex];
+                    for (int destIdx = originIdx; destIdx >= 0; destIdx--)
+                    {
+                        var dest = stations[destIdx];
+                        var destTime = rowsPerStation[destIdx][rowIndex];
+                        _db.MetroFullSchedules.Add(new MetroFullSchedule
+                        {
+                            TrainNumber = trainNumber,
+                            ListNo = listNo,
+                            EndStation = terminalBackward,
+                            TimeOrigin = originTime,
+                            TimeDestination = destTime,
+                            IsHoliday = isHoliday,
+                            LineId = line?.Id,
+                            LineName = line?.Name,
+                            StationIdOrigin = origin.Id,
+                            StationIdDestination = dest.Id,
+                            StationNameOrigin = origin.Name,
+                            StationNameDestination = dest.Name,
+                            SchedulesNumber = schedulesNumber,
+                            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            LastUpdated = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                        });
+                    }
+                }
+
+                currentStep++;
+                if (currentStep % 10 == 0 || currentStep == totalSteps)
+                {
+                    var elapsed = sw.Elapsed;
+                    var percent = (currentStep * 100) / Math.Max(1, totalSteps);
+                    var eta = currentStep > 0 ? TimeSpan.FromTicks(elapsed.Ticks * (totalSteps - currentStep) / currentStep) : TimeSpan.Zero;
+                    Console.WriteLine($@"[MetroFullSchedule] {percent,3}% | Line {line?.Name} | ListNo {listNo} | Row {rowIndex + 1}/{schedulesNumber} | Elapsed: {elapsed:mm\:ss} | ETA: {eta:mm\:ss}");
+                }
+            }
+        }
+        sw.Stop();
+    }
+}

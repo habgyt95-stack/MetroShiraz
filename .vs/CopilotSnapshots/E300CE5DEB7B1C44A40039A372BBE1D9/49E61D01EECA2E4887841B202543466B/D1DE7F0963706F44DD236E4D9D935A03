@@ -1,0 +1,15 @@
+﻿{
+  "Title": "زمان‌بندی مترو شیراز",
+  "HeadingSelects": "انتخاب‌ها",
+  "LabelLine": "خط:",
+  "OptionSelectLine": "-- انتخاب خط --",
+  "LabelOrigin": "مبدا:",
+  "OptionSelectOrigin": "-- انتخاب مبدا --",
+  "LabelDest": "مقصد:",
+  "OptionSelectDest": "-- انتخاب مقصد --",
+  "LabelHoliday": "تعطیل است؟",
+  "OptionHolidayFalse": "غیر تعطیل",
+  "OptionHolidayTrue": "تعطیل",
+  "ButtonApply": "اعمال",
+  "HeadingSchedule": "نمایش زمان‌بندی (بعدا)"
+}

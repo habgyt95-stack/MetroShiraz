@@ -1,0 +1,103 @@
+﻿@page
+@model MetroScheduler.Pages.IndexModel
+@{
+    ViewData["Title"] = "زمان‌بندی مترو شیراز";
+}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>زمان‌بندی مترو شیراز</title>
+    <style>
+        body { font-family: tahoma, Arial, sans-serif; margin: 20px; }
+        label { display: inline-block; width: 120px; }
+        select { min-width: 260px; }
+        .row { margin-bottom: 10px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; }
+        th { background: #f5f5f5; }
+    </style>
+</head>
+<body>
+    <h2>انتخاب‌ها</h2>
+    <form method="get">
+        <div class="row">
+            <label for="line">خط:</label>
+            <select id="line" name="selectedLineId" onchange="this.form.submit()">
+                <option value="">-- انتخاب خط --</option>
+                @foreach (var l in Model.Lines.OrderBy(l => l.Number).ThenBy(l => l.Name))
+                {
+                    <option value="@l.Id" @(Model.SelectedLineId == l.Id ? "selected" : null)>@l.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="origin">مبدا:</label>
+            <select id="origin" name="selectedOriginId">
+                <option value="">-- انتخاب مبدا --</option>
+                @foreach (var s in Model.Stations.OrderBy(s => s.OrderIndex).ThenBy(s => s.Name))
+                {
+                    <option value="@s.Id" @(Model.SelectedOriginId == s.Id ? "selected" : null)>@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="dest">مقصد:</label>
+            <select id="dest" name="selectedDestId">
+                <option value="">-- انتخاب مقصد --</option>
+                @foreach (var s in Model.Stations.OrderBy(s => s.OrderIndex).ThenBy(s => s.Name))
+                {
+                    <option value="@s.Id" @(Model.SelectedDestId == s.Id ? "selected" : null)>@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="holiday">تعطیل است؟</label>
+            <select id="holiday" name="isHoliday">
+                <option value="false" @(!Model.IsHoliday ? "selected" : null)>غیر تعطیل</option>
+                <option value="true" @(Model.IsHoliday ? "selected" : null)>تعطیل</option>
+            </select>
+        </div>
+
+        <div class="row">
+            <button type="submit">اعمال</button>
+        </div>
+    </form>
+
+    <hr />
+    <h4>نمایش زمان‌بندی</h4>
+    @if (Model.FullSchedules?.Any() == true)
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>شماره لیست</th>
+                    <th>شماره قطار</th>
+                    <th>ایستگاه مبدا</th>
+                    <th>ایستگاه مقصد</th>
+                    <th>ساعت حرکت</th>
+                    <th>ساعت رسیدن</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Model.FullSchedules)
+                {
+                    <tr>
+                        <td>@row.ListNo</td>
+                        <td>@row.TrainNumber</td>
+                        <td>@row.StationNameOrigin</td>
+                        <td>@row.StationNameDestination</td>
+                        <td>@row.TimeOrigin</td>
+                        <td>@row.TimeDestination</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else if (!string.IsNullOrEmpty(Model.SelectedOriginId))
+    {
+        <div>داده‌ای برای نمایش وجود ندارد.</div>
+    }
+</body>
+</html>

@@ -1,0 +1,70 @@
+﻿using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Infrastructure;
+using MetroScheduler.Infrastructure.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// EF Core SQL Server
+var connStr = builder.Configuration.GetConnectionString("Default")
+              ?? "Server=(localdb)\\MSSQLLocalDB;Database=MetroScheduler;Trusted_Connection=True;TrustServerCertificate=True;";
+
+builder.Services.AddDbContextFactory<MetroDbContext>(opt =>
+    opt.UseSqlServer(connStr));
+
+builder.Services.AddRazorPages();
+
+// Background scheduler every 30 minutes
+builder.Services.AddScoped<IMetroUpsertService, MetroUpsertService>();
+builder.Services.AddHostedService<PeriodicRefreshHostedService>();
+
+var app = builder.Build();
+
+app.MapRazorPages();
+app.MapGet("/health", () => "OK");
+
+app.Run();
+
+public sealed class PeriodicRefreshHostedService : BackgroundService
+{
+    private readonly IServiceProvider _sp;
+    private readonly ILogger<PeriodicRefreshHostedService> _logger;
+
+    public PeriodicRefreshHostedService(IServiceProvider sp, ILogger<PeriodicRefreshHostedService> logger)
+    {
+        _sp = sp;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        // Run once at startup
+        await RunOnce(stoppingToken);
+
+        // Then every 30 minutes
+        var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                await RunOnce(stoppingToken);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task RunOnce(CancellationToken ct)
+    {
+        using var scope = _sp.CreateScope();
+        var upserter = scope.ServiceProvider.GetRequiredService<IMetroUpsertService>();
+        try
+        {
+            _logger.LogInformation("Starting metro data refresh at {Time}", DateTimeOffset.Now);
+            await upserter.RunFullRefreshAsync(ct);
+            _logger.LogInformation("Finished metro data refresh at {Time}", DateTimeOffset.Now);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Metro data refresh failed");
+        }
+    }
+}

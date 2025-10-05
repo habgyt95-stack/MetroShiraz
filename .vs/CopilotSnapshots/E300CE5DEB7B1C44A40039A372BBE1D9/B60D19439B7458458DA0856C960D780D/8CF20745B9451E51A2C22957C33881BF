@@ -1,0 +1,59 @@
+﻿using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Domain.Entities;
+
+namespace MetroScheduler.Infrastructure;
+
+public sealed class MetroDbContext : DbContext
+{
+    public MetroDbContext(DbContextOptions<MetroDbContext> options) : base(options) { }
+
+    public DbSet<MetroLine> MetroLines => Set<MetroLine>();
+    public DbSet<MetroStation> MetroStations => Set<MetroStation>();
+    public DbSet<StationSchedule> StationSchedules => Set<StationSchedule>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<MetroLine>(b =>
+        {
+            b.ToTable("MetroLines");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).HasMaxLength(50);
+            b.Property(x => x.Name).HasMaxLength(256);
+            b.Property(x => x.Description).HasMaxLength(1024);
+            b.Ignore(x => x.Stations); // stations stored separately
+        });
+
+        modelBuilder.Entity<MetroStation>(b =>
+        {
+            b.ToTable("MetroStations");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).HasMaxLength(50);
+            b.Property(x => x.Name).HasMaxLength(256);
+            b.Property(x => x.Address).HasMaxLength(512);
+            b.OwnsOne(x => x.Location, nb =>
+            {
+                nb.Property(p => p.Latitude).HasColumnName("Latitude");
+                nb.Property(p => p.Longitude).HasColumnName("Longitude");
+                nb.Property(p => p.Zoom).HasColumnName("Zoom");
+            });
+            b.HasIndex(x => x.MetroLineId);
+        });
+
+        modelBuilder.Entity<StationSchedule>(b =>
+        {
+            b.ToTable("StationSchedules");
+            b.HasKey(x => new { x.StationId, x.StartStation, x.EndStation });
+            b.Property(x => x.StationId).HasMaxLength(50);
+            b.Property(x => x.StartStation).HasMaxLength(256);
+            b.Property(x => x.EndStation).HasMaxLength(256);
+            b.Property(x => x.Name).HasMaxLength(256);
+            // Store times as JSON
+            b.Property(x => x.StartTimeToEndStation)
+             .HasColumnType("nvarchar(max)")
+             .HasConversion(
+                 v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                 v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v) ?? new List<string>()
+             );
+        });
+    }
+}

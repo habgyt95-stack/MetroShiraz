@@ -1,0 +1,56 @@
+﻿@page
+@model MetroScheduler.Pages.IndexModel
+@{
+    ViewData["Title"] = "Metro Scheduler";
+}
+
+<h2>انتخاب‌ها</h2>
+<form method="get">
+    <div>
+        <label for="line">خط:</label>
+        <select id="line" name="SelectedLineId" onchange="this.form.submit()">
+            <option value="">-- انتخاب خط --</option>
+            @foreach (var l in Model.Lines)
+            {
+                <option value="@l.Id" selected="@(Model.SelectedLineId == l.Id ? "selected" : null)">@l.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label for="origin">مبدا:</label>
+        <select id="origin" name="SelectedOriginId">
+            <option value="">-- انتخاب مبدا --</option>
+            @foreach (var s in Model.Stations)
+            {
+                <option value="@s.Id" selected="@(Model.SelectedOriginId == s.Id ? "selected" : null)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label for="dest">مقصد:</label>
+        <select id="dest" name="SelectedDestId">
+            <option value="">-- انتخاب مقصد --</option>
+            @foreach (var s in Model.Stations)
+            {
+                <option value="@s.Id" selected="@(Model.SelectedDestId == s.Id ? "selected" : null)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label for="holiday">تعطیل است؟</label>
+        <select id="holiday" name="IsHoliday">
+            <option value="false" selected="@(!Model.IsHoliday ? "selected" : null)">غیر تعطیل</option>
+            <option value="true" selected="@(Model.IsHoliday ? "selected" : null)">تعطیل</option>
+        </select>
+    </div>
+
+    <div style="margin-top:10px;">
+        <button type="submit">اعمال</button>
+    </div>
+</form>
+
+<hr />
+<h4>نمایش زمان‌بندی (بعدا)</h4>
+<div id="schedule-grid">
+    <!-- جدول زمانبندی در ادامه پیاده می‌شود -->
+</div>

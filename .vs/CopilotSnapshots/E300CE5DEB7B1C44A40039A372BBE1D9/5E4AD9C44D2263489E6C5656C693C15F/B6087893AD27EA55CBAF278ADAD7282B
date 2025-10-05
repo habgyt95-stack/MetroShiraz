@@ -1,0 +1,84 @@
+﻿@page
+@model MetroScheduler.Pages.IndexModel
+@{
+    ViewData["Title"] = "زمان‌بندی مترو شیراز";
+}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>زمان‌بندی مترو شیراز</title>
+    <style>
+        body {
+            font-family: tahoma, Arial, sans-serif;
+            margin: 20px;
+        }
+
+        label {
+            display: inline-block;
+            width: 120px;
+        }
+
+        select {
+            min-width: 260px;
+        }
+
+        .row {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h2>انتخاب‌ها</h2>
+    <form method="get">
+        <div class="row">
+            <label for="line">خط:</label>
+            <select id="line" name="selectedLineId" onchange="this.form.submit()">
+                <option value="">-- انتخاب خط --</option>
+                @foreach (var l in Model.Lines.OrderBy(l => l.Number).ThenBy(l => l.Name))
+                {
+                    <option value="@l.Id" @(Model.SelectedLineId == l.Id ? "selected" : null)>@l.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="origin">مبدا:</label>
+            <select id="origin" name="selectedOriginId">
+                <option value="">-- انتخاب مبدا --</option>
+                @foreach (var s in Model.Stations.OrderBy(s => s.OrderIndex).ThenBy(s => s.Name))
+                {
+                    <option value="@s.Id" @(Model.SelectedOriginId == s.Id ? "selected" : null)>@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="dest">مقصد:</label>
+            <select id="dest" name="selectedDestId">
+                <option value="">-- انتخاب مقصد --</option>
+                @foreach (var s in Model.Stations.OrderBy(s => s.OrderIndex).ThenBy(s => s.Name))
+                {
+                    <option value="@s.Id" @(Model.SelectedDestId == s.Id ? "selected" : null)>@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="holiday">تعطیل است؟</label>
+            <select id="holiday" name="isHoliday">
+                <option value="false" @(!Model.IsHoliday ? "selected" : null)>غیر تعطیل</option>
+                <option value="true" @(Model.IsHoliday ? "selected" : null)>تعطیل</option>
+            </select>
+        </div>
+
+        <div class="row">
+            <button type="submit">اعمال</button>
+        </div>
+    </form>
+
+    <hr />
+    <h4>نمایش زمان‌بندی (بعدا)</h4>
+    <div id="schedule-grid">
+        <!-- جدول زمان‌بندی در ادامه پیاده می‌شود -->
+    </div>
+</body>
+</html>

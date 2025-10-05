@@ -1,0 +1,71 @@
+﻿@page
+@model MetroScheduler.Pages.IndexModel
+@{
+    Layout = null;
+    Response.Headers["Content-Type"] = "text/html; charset=utf-8";
+}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <title>????????? ???? ?????</title>
+    <style>
+        body { font-family: tahoma, Arial, sans-serif; margin: 20px; }
+        label { display: inline-block; width: 120px; }
+        select { min-width: 260px; }
+        .row { margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h2>?????????</h2>
+    <form method="get">
+        <div class="row">
+            <label for="line">??:</label>
+            <select id="line" name="selectedLineId" onchange="this.form.submit()">
+                <option value="">-- ?????? ?? --</option>
+                @foreach (var l in Model.Lines.OrderBy(l => l.Number).ThenBy(l => l.Name))
+                {
+                    <option value="@l.Id" @(Model.SelectedLineId == l.Id ? "selected" : null)>@l.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="origin">????:</label>
+            <select id="origin" name="selectedOriginId">
+                <option value="">-- ?????? ???? --</option>
+                @foreach (var s in Model.Stations.OrderBy(s => s.OrderIndex).ThenBy(s => s.Name))
+                {
+                    <option value="@s.Id" @(Model.SelectedOriginId == s.Id ? "selected" : null)>@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="dest">????:</label>
+            <select id="dest" name="selectedDestId">
+                <option value="">-- ?????? ???? --</option>
+                @foreach (var s in Model.Stations.OrderBy(s => s.OrderIndex).ThenBy(s => s.Name))
+                {
+                    <option value="@s.Id" @(Model.SelectedDestId == s.Id ? "selected" : null)>@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="holiday">????? ????</label>
+            <select id="holiday" name="isHoliday">
+                <option value="false" @(!Model.IsHoliday ? "selected" : null)>??? ?????</option>
+                <option value="true" @(Model.IsHoliday ? "selected" : null)>?????</option>
+            </select>
+        </div>
+
+        <div class="row">
+            <button type="submit">?????</button>
+        </div>
+    </form>
+
+    <hr />
+    <h4>????? ????????? (????)</h4>
+    <div id="schedule-grid">
+        <!-- ???? ???????? ?? ????? ????? ?????? -->
+    </div>
+</body>
+</html>

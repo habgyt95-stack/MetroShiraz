@@ -1,0 +1,86 @@
+﻿using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Domain.Entities;
+
+namespace MetroScheduler.Infrastructure;
+
+public sealed class MetroDbContext : DbContext
+{
+    public MetroDbContext(DbContextOptions<MetroDbContext> options) : base(options) { }
+
+    public DbSet<MetroLine> MetroLines => Set<MetroLine>();
+    public DbSet<MetroStation> MetroStations => Set<MetroStation>();
+    public DbSet<StationSchedule> StationSchedules => Set<StationSchedule>();
+    public DbSet<MetroFullSchedule> MetroFullSchedules => Set<MetroFullSchedule>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<MetroLine>(b =>
+        {
+            b.ToTable("MetroLines");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).HasMaxLength(50);
+            b.Property(x => x.Name).HasMaxLength(256);
+            b.Property(x => x.Description).HasMaxLength(1024);
+            b.Ignore(x => x.Stations); // stations stored separately
+        });
+
+        modelBuilder.Entity<MetroStation>(b =>
+        {
+            b.ToTable("MetroStations");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).HasMaxLength(50);
+            b.Property(x => x.Name).HasMaxLength(256);
+            b.Property(x => x.Address).HasMaxLength(512);
+            b.Property(x => x.OrderIndex);
+            b.OwnsOne(x => x.Location, nb =>
+            {
+                nb.Property(p => p.Latitude).HasColumnName("Latitude");
+                nb.Property(p => p.Longitude).HasColumnName("Longitude");
+                nb.Property(p => p.Zoom).HasColumnName("Zoom");
+            });
+            b.HasIndex(x => new { x.MetroLineId, x.OrderIndex });
+        });
+
+        modelBuilder.Entity<StationSchedule>(b =>
+        {
+            b.ToTable("StationSchedules");
+            b.HasKey(x => new { x.StationId, x.IsHoliday, x.ListKey });
+            b.Property(x => x.StationId).HasMaxLength(50);
+            b.Property(x => x.StartStation).HasMaxLength(256);
+            b.Property(x => x.EndStation).HasMaxLength(256);
+            b.Property(x => x.Name).HasMaxLength(256);
+            b.Property(x => x.ListKey).HasMaxLength(128);
+            b.Property(x => x.ListNo);
+            // Store times as JSON
+            var jsonOptions = new System.Text.Json.JsonSerializerOptions();
+            b.Property(x => x.StartTimeToEndStation)
+             .HasColumnType("nvarchar(max)")
+             .HasConversion(
+                 v => System.Text.Json.JsonSerializer.Serialize(v, jsonOptions),
+                 v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, jsonOptions) ?? new List<string>()
+             );
+        });
+
+        modelBuilder.Entity<MetroFullSchedule>(b =>
+        {
+            b.ToTable("MetroFullSchedules");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedOnAdd();
+            b.Property(x => x.TrainNumber).HasColumnType("bigint");
+            b.Property(x => x.ListNo);
+            b.Property(x => x.EndStation).HasMaxLength(250);
+            b.Property(x => x.TimeOrigin).HasMaxLength(250);
+            b.Property(x => x.TimeDestination).HasMaxLength(250);
+            b.Property(x => x.IsHoliday);
+            b.Property(x => x.LineId).HasMaxLength(250);
+            b.Property(x => x.LineName).HasMaxLength(250);
+            b.Property(x => x.StationIdOrigin).HasMaxLength(250);
+            b.Property(x => x.StationIdDestination).HasMaxLength(250);
+            b.Property(x => x.StationNameOrigin).HasMaxLength(250);
+            b.Property(x => x.StationNameDestination).HasMaxLength(250);
+            b.Property(x => x.SchedulesNumber);
+            b.Property(x => x.CreatedAt).HasColumnType("bigint");
+            b.Property(x => x.LastUpdated).HasColumnType("bigint");
+        });
+    }
+}

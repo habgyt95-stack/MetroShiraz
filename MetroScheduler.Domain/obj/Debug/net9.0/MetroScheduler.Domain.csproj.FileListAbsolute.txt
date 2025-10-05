@@ -1,0 +1,11 @@
+D:\Projects\MetroScheduler\MetroScheduler.Domain\obj\Debug\net9.0\MetroScheduler.Domain.GeneratedMSBuildEditorConfig.editorconfig
+D:\Projects\MetroScheduler\MetroScheduler.Domain\obj\Debug\net9.0\MetroScheduler.Domain.AssemblyInfoInputs.cache
+D:\Projects\MetroScheduler\MetroScheduler.Domain\obj\Debug\net9.0\MetroScheduler.Domain.AssemblyInfo.cs
+D:\Projects\MetroScheduler\MetroScheduler.Domain\obj\Debug\net9.0\MetroScheduler.Domain.csproj.CoreCompileInputs.cache
+D:\Projects\MetroScheduler\MetroScheduler.Domain\bin\Debug\net9.0\MetroScheduler.Domain.deps.json
+D:\Projects\MetroScheduler\MetroScheduler.Domain\bin\Debug\net9.0\MetroScheduler.Domain.dll
+D:\Projects\MetroScheduler\MetroScheduler.Domain\bin\Debug\net9.0\MetroScheduler.Domain.pdb
+D:\Projects\MetroScheduler\MetroScheduler.Domain\obj\Debug\net9.0\MetroScheduler.Domain.dll
+D:\Projects\MetroScheduler\MetroScheduler.Domain\obj\Debug\net9.0\refint\MetroScheduler.Domain.dll
+D:\Projects\MetroScheduler\MetroScheduler.Domain\obj\Debug\net9.0\MetroScheduler.Domain.pdb
+D:\Projects\MetroScheduler\MetroScheduler.Domain\obj\Debug\net9.0\ref\MetroScheduler.Domain.dll

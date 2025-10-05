@@ -1,0 +1,105 @@
+﻿using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Domain.Entities;
+
+namespace MetroScheduler.Infrastructure.Services;
+
+public interface IMetroFullScheduleBuilder
+{
+    Task BuildAsync(string lineId, bool isHoliday, CancellationToken ct = default);
+    Task BuildAllAsync(CancellationToken ct = default);
+}
+
+public sealed class MetroFullScheduleBuilder : IMetroFullScheduleBuilder
+{
+    private readonly MetroDbContext _db;
+
+    public MetroFullScheduleBuilder(MetroDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task BuildAllAsync(CancellationToken ct = default)
+    {
+        var lineIds = await _db.MetroLines.AsNoTracking().Select(l => l.Id).ToListAsync(ct);
+        foreach (var lineId in lineIds)
+        {
+            await BuildAsync(lineId, false, ct);
+            await BuildAsync(lineId, true, ct);
+        }
+    }
+
+    public async Task BuildAsync(string lineId, bool isHoliday, CancellationToken ct = default)
+    {
+        var stations = await _db.MetroStations.AsNoTracking()
+            .Where(s => s.MetroLineId == lineId)
+            .OrderBy(s => s.OrderIndex).ThenBy(s => s.Name)
+            .ToListAsync(ct);
+        if (stations.Count == 0) return;
+
+        var line = await _db.MetroLines.AsNoTracking().FirstOrDefaultAsync(l => l.Id == lineId, ct);
+        var schedulesByStation = new Dictionary<string, List<StationSchedule>>();
+        foreach (var st in stations)
+        {
+            var sch = await _db.StationSchedules.AsNoTracking()
+                .Where(x => x.StationId == st.Id && x.IsHoliday == isHoliday)
+                .OrderBy(x => x.ListNo)
+                .ToListAsync(ct);
+            schedulesByStation[st.Id] = sch;
+        }
+
+        var listCount = schedulesByStation.Values.Select(v => v.Select(s => s.ListNo).Distinct().Count()).Distinct().SingleOrDefault();
+        if (listCount == 0) return;
+
+        _db.MetroFullSchedules.RemoveRange(_db.MetroFullSchedules.Where(f => f.LineId == lineId && f.IsHoliday == isHoliday));
+
+        for (int listNo = 1; listNo <= listCount; listNo++)
+        {
+            // Select the schedule object for each station for this listNo
+            var schedulePerStation = stations
+                .Select(st => schedulesByStation[st.Id].First(s => s.ListNo == listNo))
+                .ToList();
+
+            var rowsPerStation = schedulePerStation.Select(s => s.StartTimeToEndStation).ToList();
+            var schedulesNumber = rowsPerStation.First().Count;
+
+            for (int rowIndex = 0; rowIndex < schedulesNumber; rowIndex++)
+            {
+                var trainNumber = (long)(rowIndex + 1);
+
+                for (int originIdx = 0; originIdx < stations.Count; originIdx++)
+                {
+                    var origin = stations[originIdx];
+                    var originSch = schedulePerStation[originIdx];
+                    var originTime = rowsPerStation[originIdx][rowIndex];
+
+                    for (int destIdx = originIdx; destIdx < stations.Count; destIdx++)
+                    {
+                        var dest = stations[destIdx];
+                        var destTime = rowsPerStation[destIdx][rowIndex];
+
+                        _db.MetroFullSchedules.Add(new MetroFullSchedule
+                        {
+                            TrainNumber = trainNumber,
+                            ListNo = listNo,
+                            EndStation = originSch.EndStation, // terminal direction of this run
+                            TimeOrigin = originTime,
+                            TimeDestination = destTime,
+                            IsHoliday = isHoliday,
+                            LineId = line?.Id,
+                            LineName = line?.Name,
+                            StationIdOrigin = origin.Id,
+                            StationIdDestination = dest.Id,
+                            StationNameOrigin = origin.Name,
+                            StationNameDestination = dest.Name,
+                            SchedulesNumber = schedulesNumber,
+                            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            LastUpdated = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                        });
+                    }
+                }
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+}

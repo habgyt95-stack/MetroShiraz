@@ -1,0 +1,163 @@
+﻿using System.Net.Http;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Domain.Entities;
+using MetroScheduler.Infrastructure;
+
+namespace MetroScheduler.Infrastructure.Services;
+
+public interface IMetroUpsertService
+{
+    Task RunFullRefreshAsync(CancellationToken ct = default);
+}
+
+public sealed class MetroUpsertService : IMetroUpsertService
+{
+    private readonly MetroDbContext _db;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<MetroUpsertService> _logger;
+
+    public MetroUpsertService(MetroDbContext db, IHttpClientFactory httpClientFactory, ILogger<MetroUpsertService> logger)
+    {
+        _db = db;
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
+    }
+
+    public async Task RunFullRefreshAsync(CancellationToken ct = default)
+    {
+        HttpClient client;
+        try
+        {
+            client = _httpClientFactory.CreateClient("Sarv");
+        }
+        catch
+        {
+            client = new HttpClient { BaseAddress = new Uri("https://api-sarv.shiraz.ir") };
+            client.DefaultRequestHeaders.Add("Authorization", "6b87277da5b047bd9b680122e943df3d9eba1626bd424dd993589322e09d6f9f");
+        }
+
+        // 1) Lines
+        var lines = await GetAsync<List<MetroLineDto>>(client, "/api/v1/metro/line", ct) ?? new();
+        foreach (var line in lines)
+        {
+            await UpsertLineAsync(line, ct);
+            foreach (var st in line.Stations)
+            {
+                st.MetroLineId = line.Id;
+                await UpsertStationAsync(st, ct);
+            }
+        }
+        await _db.SaveChangesAsync(ct);
+
+        // 2) Stations per line (to capture fields that only appear here)
+        foreach (var line in lines)
+        {
+            var stations = await GetAsync<List<MetroStation>>(client, $"/api/v1/metro/station?lineId={Uri.EscapeDataString(line.Id)}", ct) ?? new();
+            foreach (var st in stations)
+            {
+                await UpsertStationAsync(st, ct);
+            }
+        }
+        await _db.SaveChangesAsync(ct);
+
+        // 3) Scheduling per station per line for both holidays
+        foreach (var line in lines)
+        {
+            var stationIds = await _db.MetroStations.AsNoTracking()
+                .Where(s => s.MetroLineId == line.Id)
+                .Select(s => s.Id)
+                .ToListAsync(ct);
+
+            foreach (var stationId in stationIds)
+            {
+                foreach (var isHoliday in new[] { true, false })
+                {
+                    var schedules = await GetAsync<List<StationSchedule>>(client, $"/api/v1/metro/{Uri.EscapeDataString(line.Id)}/station/{Uri.EscapeDataString(stationId)}/scheduling/?isHoliday={(isHoliday ? "true" : "false")}", ct) ?? new();
+                    foreach (var sch in schedules)
+                    {
+                        sch.IsHoliday = isHoliday;
+                        var existing = await _db.StationSchedules.FirstOrDefaultAsync(x => x.StationId == sch.StationId && x.StartStation == sch.StartStation && x.EndStation == sch.EndStation && x.IsHoliday == isHoliday, ct);
+                        if (existing is null)
+                        {
+                            _db.StationSchedules.Add(sch);
+                        }
+                        else
+                        {
+                            existing.Name = sch.Name;
+                            existing.Interval = sch.Interval;
+                            existing.StartTimeToEndStation = sch.StartTimeToEndStation;
+                        }
+                    }
+                }
+            }
+        }
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task<T?> GetAsync<T>(HttpClient client, string path, CancellationToken ct)
+    {
+        using var resp = await client.GetAsync(path, ct);
+        var json = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            return default;
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    private async Task UpsertLineAsync(MetroLineDto dto, CancellationToken ct)
+    {
+        var existing = await _db.MetroLines.FirstOrDefaultAsync(l => l.Id == dto.Id, ct);
+        if (existing is null)
+        {
+            existing = new MetroLine { Id = dto.Id };
+            _db.MetroLines.Add(existing);
+        }
+        existing.Name = dto.Name;
+        existing.Number = dto.Number;
+        existing.Description = dto.Description;
+        existing.IsActive = dto.IsActive;
+        existing.CitizenCanView = dto.CitizenCanView;
+        existing.__v = dto.__v;
+        existing.CreatedAt = dto.CreatedAt;
+        existing.UpdatedAt = dto.UpdatedAt;
+        existing.CreatedById = dto.CreatedBy?.Id;
+    }
+
+    private async Task UpsertStationAsync(MetroStation station, CancellationToken ct)
+    {
+        var existing = await _db.MetroStations.FirstOrDefaultAsync(s => s.Id == station.Id, ct);
+        if (existing is null)
+        {
+            existing = new MetroStation { Id = station.Id };
+            _db.MetroStations.Add(existing);
+        }
+        existing.Name = station.Name;
+        existing.Address = station.Address;
+        existing.Description = station.Description;
+        existing.Deleted = station.Deleted;
+        existing.IsActive = station.IsActive;
+        existing.CitizenCanView = station.CitizenCanView;
+        existing.Location = station.Location is null ? null : new GeoLocation
+        {
+            Latitude = station.Location.Latitude,
+            Longitude = station.Location.Longitude,
+            Zoom = station.Location.Zoom
+        };
+        existing.MetroLineId = station.MetroLineId;
+        existing.CreatedAt = station.CreatedAt;
+        existing.UpdatedAt = station.UpdatedAt;
+        existing.__v = station.__v;
+    }
+}

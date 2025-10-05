@@ -1,0 +1,42 @@
+@page
+@model MetroScheduler.Pages.DebugModel
+@{
+    ViewData["Title"] = "Debug MetroFullSchedules";
+}
+
+<h3>Debug MetroFullSchedules</h3>
+
+<p>Line: @Model.LineId | Holiday: @Model.IsHoliday | Origin: @Model.OriginId | Destination: @Model.DestinationId</p>
+
+<h4>Distinct (EndStation, ListNo)</h4>
+<ul>
+@foreach (var item in Model.DistinctEndStationListNo)
+{
+    <li>EndStation: @item.EndStation | ListNo: @item.ListNo</li>
+}
+</ul>
+
+<h4>Sample Rows</h4>
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>TrainNumber</th>
+            <th>ListNo</th>
+            <th>EndStation</th>
+            <th>TimeOrigin</th>
+            <th>TimeDestination</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var s in Model.Samples)
+    {
+        <tr>
+            <td>@s.TrainNumber</td>
+            <td>@s.ListNo</td>
+            <td>@s.EndStation</td>
+            <td>@s.TimeOrigin</td>
+            <td>@s.TimeDestination</td>
+        </tr>
+    }
+    </tbody>
+</table>

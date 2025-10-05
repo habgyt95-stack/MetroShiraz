@@ -1,0 +1,15 @@
+﻿{
+  "ConnectionStrings": {
+    "Default": "Server=(localdb)\\MSSQLLocalDB;Database=MetroScheduler;Trusted_Connection=True;TrustServerCertificate=True;"
+  },
+  "Sarv": {
+    "Authorization": "6b87277da5b047bd9b680122e943df3d9eba1626bd424dd993589322e09d6f9f"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}

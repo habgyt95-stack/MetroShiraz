@@ -1,0 +1,142 @@
+﻿using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Infrastructure;
+using MetroScheduler.Infrastructure.Services;
+using Microsoft.AspNetCore.Localization;
+using System.Globalization;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
+using Microsoft.AspNetCore.WebUtilities;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Register encoding providers and set default encoding for the app
+Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+// EF Core SQL Server
+var connStr = builder.Configuration.GetConnectionString("Default")
+              ?? "Server=(localdb)\\MSSQLLocalDB;Database=MetroScheduler;Trusted_Connection=True;TrustServerCertificate=True;";
+
+builder.Services.AddDbContextFactory<MetroDbContext>(opt =>
+    opt.UseSqlServer(connStr));
+
+// Configure Unicode encoding for all ranges, specifically including Persian/Arabic
+builder.Services.AddSingleton(HtmlEncoder.Create(
+    UnicodeRanges.BasicLatin,
+    UnicodeRanges.Arabic, // Includes Persian
+    UnicodeRanges.Latin1Supplement,
+    UnicodeRanges.LatinExtendedA,
+    UnicodeRanges.LatinExtendedB,
+    UnicodeRanges.All
+));
+
+// Configure WebEncoders for full Unicode support
+builder.Services.AddWebEncoders(options => {
+    options.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.All);
+});
+
+// Simple pages without localization
+builder.Services.AddRazorPages(options => {
+    options.Conventions.ConfigureFilter(new Microsoft.AspNetCore.Mvc.ResponseCacheAttribute {
+        NoStore = true,
+        Location = Microsoft.AspNetCore.Mvc.ResponseCacheLocation.None
+    });
+});
+
+// Explicit fa-IR culture
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    var culture = new CultureInfo("fa-IR");
+    options.DefaultRequestCulture = new RequestCulture(culture);
+    options.SupportedCultures = new List<CultureInfo> { culture };
+    options.SupportedUICultures = new List<CultureInfo> { culture };
+});
+
+// Background scheduler every 30 minutes
+builder.Services.AddScoped<IMetroUpsertService, MetroUpsertService>();
+builder.Services.AddScoped<IMetroFullScheduleBuilder, MetroFullScheduleBuilder>();
+builder.Services.AddHostedService<PeriodicRefreshHostedService>();
+
+var app = builder.Build();
+
+// Apply fa-IR localization
+app.UseRequestLocalization();
+
+// Force UTF-8 encoding for all HTML responses - safely set headers
+app.Use(async (ctx, next) => 
+{
+    // ???? ?????? ??? ???? ?? ??? ?? next ????? ????????
+    await next();
+    
+    try 
+    {
+        // ??? ??? ???? ???? ???? ???? ???? ????? ?? ????? ???????
+        if (!ctx.Response.HasStarted && 
+            ctx.Response.ContentType != null && 
+            ctx.Response.ContentType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.ContentType = "text/html; charset=utf-8";
+            
+            // ????? ?????? ?????? ? ?? ??? ??? ???? ???? ???? ???? ????
+            ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
+            ctx.Response.Headers["Pragma"] = "no-cache";
+            ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        }
+    }
+    catch
+    {
+        // ??? ???? ???????? - ??? ????? ???? ????? ?????? ????? ????? ????????
+    }
+});
+
+app.MapRazorPages();
+app.MapGet("/health", () => "OK");
+
+app.Run();
+
+public sealed class PeriodicRefreshHostedService : BackgroundService
+{
+    private readonly IServiceProvider _sp;
+    private readonly ILogger<PeriodicRefreshHostedService> _logger;
+
+    public PeriodicRefreshHostedService(IServiceProvider sp, ILogger<PeriodicRefreshHostedService> logger)
+    {
+        _sp = sp;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        // Run once at startup
+        await RunOnce(stoppingToken);
+
+        // Then every 30 minutes
+        var timer = new PeriodicTimer(TimeSpan.FromMinutes(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                await RunOnce(stoppingToken);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task RunOnce(CancellationToken ct)
+    {
+        using var scope = _sp.CreateScope();
+        var upserter = scope.ServiceProvider.GetRequiredService<IMetroUpsertService>();
+        var builder = scope.ServiceProvider.GetRequiredService<IMetroFullScheduleBuilder>();
+        try
+        {
+            _logger.LogInformation("Starting metro data refresh at {Time}", DateTimeOffset.Now);
+            await upserter.RunFullRefreshAsync(ct);
+            await builder.BuildAllAsync(ct);
+            _logger.LogInformation("Finished metro data refresh at {Time}", DateTimeOffset.Now);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Metro data refresh failed");
+        }
+    }
+}

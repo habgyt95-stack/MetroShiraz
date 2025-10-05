@@ -1,0 +1,16 @@
+﻿using System.Text.Json.Serialization;
+
+namespace MetroScheduler.Domain.Entities;
+
+public sealed class StationSchedule
+{
+    [JsonPropertyName("_id")] public string StationId { get; set; } = default!;
+    public string? StartStation { get; set; }
+    public string? EndStation { get; set; }
+    public string? Name { get; set; }
+    public int? Interval { get; set; }
+    public List<string> StartTimeToEndStation { get; set; } = new();
+
+    // Not in API payload; set by caller based on query param
+    public bool IsHoliday { get; set; }
+}

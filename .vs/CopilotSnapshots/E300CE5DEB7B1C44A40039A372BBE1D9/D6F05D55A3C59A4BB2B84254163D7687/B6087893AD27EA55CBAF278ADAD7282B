@@ -1,0 +1,72 @@
+﻿@page
+@model MetroScheduler.Pages.IndexModel
+@inject Microsoft.AspNetCore.Mvc.Localization.IViewLocalizer Localizer
+@{
+    ViewData["Title"] = Localizer["Title"];
+}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>@ViewData["Title"]</title>
+    <style>
+        body { font-family: tahoma, Arial, sans-serif; margin: 20px; }
+        label { display: inline-block; width: 120px; }
+        select { min-width: 260px; }
+        .row { margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h2>@Localizer["HeadingSelects"]</h2>
+    <form method="get">
+        <div class="row">
+            <label for="line">@Localizer["LabelLine"]</label>
+            <select id="line" name="selectedLineId" onchange="this.form.submit()">
+                <option value="">@Localizer["OptionSelectLine"]</option>
+                @foreach (var l in Model.Lines.OrderBy(l => l.Number).ThenBy(l => l.Name))
+                {
+                    <option value="@l.Id" @(Model.SelectedLineId == l.Id ? "selected" : null)>@l.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="origin">@Localizer["LabelOrigin"]</label>
+            <select id="origin" name="selectedOriginId">
+                <option value="">@Localizer["OptionSelectOrigin"]</option>
+                @foreach (var s in Model.Stations.OrderBy(s => s.OrderIndex).ThenBy(s => s.Name))
+                {
+                    <option value="@s.Id" @(Model.SelectedOriginId == s.Id ? "selected" : null)>@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="dest">@Localizer["LabelDest"]</label>
+            <select id="dest" name="selectedDestId">
+                <option value="">@Localizer["OptionSelectDest"]</option>
+                @foreach (var s in Model.Stations.OrderBy(s => s.OrderIndex).ThenBy(s => s.Name))
+                {
+                    <option value="@s.Id" @(Model.SelectedDestId == s.Id ? "selected" : null)>@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="row">
+            <label for="holiday">@Localizer["LabelHoliday"]</label>
+            <select id="holiday" name="isHoliday">
+                <option value="false" @(!Model.IsHoliday ? "selected" : null)>@Localizer["OptionHolidayFalse"]</option>
+                <option value="true" @(Model.IsHoliday ? "selected" : null)>@Localizer["OptionHolidayTrue"]</option>
+            </select>
+        </div>
+
+        <div class="row">
+            <button type="submit">@Localizer["ButtonApply"]</button>
+        </div>
+    </form>
+
+    <hr />
+    <h4>@Localizer["HeadingSchedule"]</h4>
+    <div id="schedule-grid">
+        <!-- جدول زمان‌بندی در ادامه پیاده می‌شود -->
+    </div>
+</body>
+</html>

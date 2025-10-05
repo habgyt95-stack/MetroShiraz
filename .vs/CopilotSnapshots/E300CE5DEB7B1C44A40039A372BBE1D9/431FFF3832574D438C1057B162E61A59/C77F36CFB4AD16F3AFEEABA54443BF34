@@ -1,0 +1,243 @@
+﻿using Microsoft.EntityFrameworkCore;
+using MetroScheduler.Infrastructure;
+using MetroScheduler.Infrastructure.Services;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using MetroScheduler.Domain.Entities;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// In-project minimal DbContext (for now, single project) using SQL Server
+var connStr = builder.Configuration.GetConnectionString("Default")
+              ?? "Server=(localdb)\\MSSQLLocalDB;Database=MetroScheduler;Trusted_Connection=True;TrustServerCertificate=True;";
+
+builder.Services.AddDbContext<MetroDbContext>(opt => opt.UseSqlServer(connStr));
+
+builder.Services.AddScoped<IMetroUpsertService, MetroUpsertService>();
+
+var app = builder.Build();
+
+app.MapGet("/", () => "MetroScheduler API snapshotter is running.");
+
+app.Run();
+
+// Inline DbContext and entity configurations so we keep one project
+public sealed class MetroDbContext : DbContext
+{
+    public MetroDbContext(DbContextOptions<MetroDbContext> options) : base(options) { }
+
+    public DbSet<MetroLine> MetroLines => Set<MetroLine>();
+    public DbSet<MetroStation> MetroStations => Set<MetroStation>();
+    public DbSet<StationSchedule> StationSchedules => Set<StationSchedule>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<MetroLine>(b =>
+        {
+            b.ToTable("MetroLines");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).HasMaxLength(50);
+            b.Property(x => x.Name).HasMaxLength(256);
+            b.Property(x => x.Description).HasMaxLength(1024);
+            b.Ignore(x => x.Stations);
+        });
+
+        modelBuilder.Entity<MetroStation>(b =>
+        {
+            b.ToTable("MetroStations");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).HasMaxLength(50);
+            b.Property(x => x.Name).HasMaxLength(256);
+            b.Property(x => x.Address).HasMaxLength(512);
+            b.OwnsOne(x => x.Location, nb =>
+            {
+                nb.Property(p => p.Latitude).HasColumnName("Latitude");
+                nb.Property(p => p.Longitude).HasColumnName("Longitude");
+                nb.Property(p => p.Zoom).HasColumnName("Zoom");
+            });
+            b.HasIndex(x => x.MetroLineId);
+        });
+
+        modelBuilder.Entity<StationSchedule>(b =>
+        {
+            b.ToTable("StationSchedules");
+            b.HasKey(x => new { x.StationId, x.StartStation, x.EndStation });
+            b.Property(x => x.StationId).HasMaxLength(50);
+            b.Property(x => x.StartStation).HasMaxLength(256);
+            b.Property(x => x.EndStation).HasMaxLength(256);
+            b.Property(x => x.Name).HasMaxLength(256);
+            b.Property(x => x.StartTimeToEndStation)
+             .HasColumnType("nvarchar(max)")
+             .HasConversion(
+                 v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                 v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v) ?? new List<string>()
+             );
+        });
+    }
+}
+
+public class ApiSnapshotHostedService : BackgroundService
+{
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<ApiSnapshotHostedService> _logger;
+    private readonly IWebHostEnvironment _env;
+
+    public ApiSnapshotHostedService(IHttpClientFactory httpClientFactory,
+        ILogger<ApiSnapshotHostedService> logger,
+        IWebHostEnvironment env)
+    {
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
+        _env = env;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await RunSnapshotAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error while running API snapshot");
+        }
+    }
+
+    private async Task RunSnapshotAsync(CancellationToken ct)
+    {
+        var client = _httpClientFactory.CreateClient("Sarv");
+        var docDir = Path.Combine(_env.ContentRootPath, "Doc");
+        Directory.CreateDirectory(docDir);
+
+        // 1) Lines
+        var linesPath = "/api/v1/metro/line";
+        _logger.LogInformation("Requesting lines: {Path}", linesPath);
+        var linesJson = await GetAsStringAsync(client, linesPath, ct);
+        await WriteAsync(docDir, "Lines.json", linesJson, ct);
+
+        var lineIds = ExtractIds(linesJson);
+        _logger.LogInformation("Found {Count} line ids", lineIds.Count);
+
+        // Maintain a set of all station ids encountered to avoid duplicate calls for lines-of-station
+        var allStationIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var lineId in lineIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            // 2) Stations for line
+            var stationsPath = $"/api/v1/metro/station?lineId={Uri.EscapeDataString(lineId)}";
+            _logger.LogInformation("Requesting stations for line {LineId}", lineId);
+            var stationsJson = await GetAsStringAsync(client, stationsPath, ct);
+            await WriteAsync(docDir, $"Stations_Line_{lineId}.json", stationsJson, ct);
+
+            var stationIds = ExtractIds(stationsJson);
+            _logger.LogInformation("Found {Count} stations for line {LineId}", stationIds.Count, lineId);
+
+            foreach (var stationId in stationIds)
+            {
+                ct.ThrowIfCancellationRequested();
+                // 3) Scheduling for (line, station) in both holiday modes
+                foreach (var isHoliday in new[] { true, false })
+                {
+                    var schedulingPath = $"/api/v1/metro/{Uri.EscapeDataString(lineId)}/station/{Uri.EscapeDataString(stationId)}/scheduling/?isHoliday={(isHoliday ? "true" : "false")}";
+
+                    var response = await client.GetAsync(schedulingPath);
+                    response.EnsureSuccessStatusCode();
+                    var schedulingJson = await response.Content.ReadAsStringAsync(ct);
+                    await WriteAsync(docDir, $"Scheduling_Line_{lineId}_Station_{stationId}_IsHoliday_{isHoliday.ToString().ToLowerInvariant()}.json", schedulingJson, ct);
+                }
+
+                // 4) Lines for station (only once per station id)
+                if (allStationIds.Add(stationId))
+                {
+                    var linesOfStationPath = $"/api/v1/metro/station/{Uri.EscapeDataString(stationId)}/lines";
+                    _logger.LogInformation("Requesting lines for station {StationId}", stationId);
+                    var linesOfStationJson = await GetAsStringAsync(client, linesOfStationPath, ct);
+                    await WriteAsync(docDir, $"LinesOfStation_{stationId}.json", linesOfStationJson, ct);
+                }
+            }
+        }
+
+        _logger.LogInformation("API snapshot completed. Files saved to {DocDir}", docDir);
+    }
+
+    private static async Task<string> GetAsStringAsync(HttpClient client, string path, CancellationToken ct)
+    {
+        using var resp = await client.GetAsync(path, ct);
+        var content = await resp.Content.ReadAsStringAsync(ct);
+        // Write a minimal metadata envelope to help debugging errors inline in files
+        if (!resp.IsSuccessStatusCode)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                error = true,
+                status = (int)resp.StatusCode,
+                reason = resp.ReasonPhrase,
+                body = content
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        // Try to pretty-print JSON if possible
+        try
+        {
+            using var doc = JsonDocument.Parse(content);
+            return JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return content; // not JSON
+        }
+    }
+
+    private static async Task WriteAsync(string dir, string fileName, string content, CancellationToken ct)
+    {
+        // Sanitize filename just in case
+        foreach (var c in Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(c, '_');
+        }
+        var fullPath = Path.Combine(dir, fileName);
+        await File.WriteAllTextAsync(fullPath, content, ct);
+    }
+
+    private static HashSet<string> ExtractIds(string json)
+    {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            ExtractIdsRecursive(doc.RootElement, ids);
+        }
+        catch
+        {
+            // ignore parse errors; return empty set
+        }
+        return ids;
+    }
+
+    private static void ExtractIdsRecursive(JsonElement element, HashSet<string> ids)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var prop in element.EnumerateObject())
+                {
+                    if ((prop.NameEquals("id") || prop.NameEquals("_id")) && prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        var v = prop.Value.GetString();
+                        if (!string.IsNullOrWhiteSpace(v))
+                        {
+                            ids.Add(v);
+                        }
+                    }
+                    ExtractIdsRecursive(prop.Value, ids);
+                }
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    ExtractIdsRecursive(item, ids);
+                }
+                break;
+        }
+    }
+}

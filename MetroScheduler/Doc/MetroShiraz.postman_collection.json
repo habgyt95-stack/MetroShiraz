@@ -1,0 +1,182 @@
+{
+	"info": {
+		"_postman_id": "ad386971-5629-45f8-9075-68f297048b38",
+		"name": "MetroShiraz",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "42555928"
+	},
+	"item": [
+		{
+			"name": "MetroLines",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "6b87277da5b047bd9b680122e943df3d9eba1626bd424dd993589322e09d6f9f",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "https://api-sarv.shiraz.ir/api/v1/metro/line",
+					"protocol": "https",
+					"host": [
+						"api-sarv",
+						"shiraz",
+						"ir"
+					],
+					"path": [
+						"api",
+						"v1",
+						"metro",
+						"line"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MetroStations",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "6b87277da5b047bd9b680122e943df3d9eba1626bd424dd993589322e09d6f9f",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "https://api-sarv.shiraz.ir/api/v1/metro/station?lineId=6521300512d8e3b80bb14133",
+					"protocol": "https",
+					"host": [
+						"api-sarv",
+						"shiraz",
+						"ir"
+					],
+					"path": [
+						"api",
+						"v1",
+						"metro",
+						"station"
+					],
+					"query": [
+						{
+							"key": "lineId",
+							"value": "6521300512d8e3b80bb14133"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MetroScheduling",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "6b87277da5b047bd9b680122e943df3d9eba1626bd424dd993589322e09d6f9f",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "https://api-sarv.shiraz.ir/api/v1/metro/:lineId/station/:stationId/scheduling/?isHoliday=true",
+					"protocol": "https",
+					"host": [
+						"api-sarv",
+						"shiraz",
+						"ir"
+					],
+					"path": [
+						"api",
+						"v1",
+						"metro",
+						":lineId",
+						"station",
+						":stationId",
+						"scheduling",
+						""
+					],
+					"query": [
+						{
+							"key": "isHoliday",
+							"value": "true"
+						}
+					],
+					"variable": [
+						{
+							"key": "lineId",
+							"value": "6521300512d8e3b80bb14133"
+						},
+						{
+							"key": "stationId",
+							"value": "65213178ef6b3567b82dabfd"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "LinesStation",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "6b87277da5b047bd9b680122e943df3d9eba1626bd424dd993589322e09d6f9f",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "https://api-sarv.shiraz.ir/api/v1/metro/station/:stationId/lines",
+					"protocol": "https",
+					"host": [
+						"api-sarv",
+						"shiraz",
+						"ir"
+					],
+					"path": [
+						"api",
+						"v1",
+						"metro",
+						"station",
+						":stationId",
+						"lines"
+					],
+					"variable": [
+						{
+							"key": "stationId",
+							"value": "6521316cef6b3567b82dabfc"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	]
+}

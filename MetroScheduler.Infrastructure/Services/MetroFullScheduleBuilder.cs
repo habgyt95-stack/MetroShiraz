@@ -146,9 +146,51 @@ public sealed class MetroFullScheduleBuilder : IMetroFullScheduleBuilder
             bwdByStation[st.Id] = bwd.OrderBy(x => x.ListNo).ToList();
         }
 
-        // Counts per direction (ensure all stations have that many lists)
-        int fwdCount = fwdByStation.Values.Count > 0 ? fwdByStation.Values.Min(l => l.Count) : 0;
-        int bwdCount = bwdByStation.Values.Count > 0 ? bwdByStation.Values.Min(l => l.Count) : 0;
+        // Build list groups aligned by ListKey across all stations for each direction
+        // Forward groups: key = ListKey, value = list of (stationIdx, schedule) for that ListKey
+        var fwdGroups = new Dictionary<string, List<(int stationIdx, StationSchedule sch)>>();
+        for (int stationIdx = 0; stationIdx < stations.Count; stationIdx++)
+        {
+            var st = stations[stationIdx];
+            var fwdLists = fwdByStation[st.Id];
+            foreach (var sch in fwdLists)
+            {
+                if (!fwdGroups.ContainsKey(sch.ListKey))
+                    fwdGroups[sch.ListKey] = new();
+                fwdGroups[sch.ListKey].Add((stationIdx, sch));
+            }
+        }
+        // Keep only groups where all stations have that ListKey
+        var fwdAlignedGroups = fwdGroups
+            .Where(g => g.Value.Count == stations.Count)
+            .Select(g => g.Value.OrderBy(x => x.stationIdx).Select(x => x.sch).ToList())
+            .OrderBy(group => group.First().ListNo)
+            .ToList();
+
+        // Backward groups
+        var bwdGroups = new Dictionary<string, List<(int stationIdx, StationSchedule sch)>>();
+        for (int stationIdx = 0; stationIdx < stations.Count; stationIdx++)
+        {
+            var st = stations[stationIdx];
+            var bwdLists = bwdByStation[st.Id];
+            foreach (var sch in bwdLists)
+            {
+                if (!bwdGroups.ContainsKey(sch.ListKey))
+                    bwdGroups[sch.ListKey] = new();
+                bwdGroups[sch.ListKey].Add((stationIdx, sch));
+            }
+        }
+        var bwdAlignedGroups = bwdGroups
+            .Where(g => g.Value.Count == stations.Count)
+            .Select(g => g.Value.OrderBy(x => x.stationIdx).Select(x => x.sch).ToList())
+            .OrderBy(group => group.First().ListNo)
+            .ToList();
+
+        int fwdCount = fwdAlignedGroups.Count;
+        int bwdCount = bwdAlignedGroups.Count;
+
+        // Diagnostic logging
+        Console.WriteLine($"[MetroFullSchedule] Line {line?.Name} IsHoliday={isHoliday}: Forward groups={fwdCount}, Backward groups={bwdCount}");
         if (fwdCount == 0 && bwdCount == 0) return;
 
         // Wipe existing rows for this line/day
@@ -173,8 +215,8 @@ public sealed class MetroFullScheduleBuilder : IMetroFullScheduleBuilder
         // Build Forward direction using forward lists only
         for (int k = 0; k < fwdCount; k++)
         {
-            // pick k-th forward schedule at each station
-            var schedulePerStation = stations.Select(st => fwdByStation[st.Id][k]).ToList();
+            // Use k-th aligned group (all stations have the same ListKey)
+            var schedulePerStation = fwdAlignedGroups[k];
             // rows count (assumed equal); use min for safety
             var rowsPerStation = schedulePerStation.Select(s => s.StartTimeToEndStation.Count).ToList();
             var rowCount = rowsPerStation.Min();
@@ -195,7 +237,7 @@ public sealed class MetroFullScheduleBuilder : IMetroFullScheduleBuilder
                         {
                             TrainNumber = trainNumber,
                             ListNo = originSch.ListNo, // use origin's actual list number
-                            EndStation = originSch.EndStation, // use origin schedule's terminal to avoid mislabeling
+                            EndStation = terminalLast, // forward direction goes to last terminal
                             TimeOrigin = originTime,
                             TimeDestination = destTime,
                             IsHoliday = isHoliday,
@@ -218,7 +260,8 @@ public sealed class MetroFullScheduleBuilder : IMetroFullScheduleBuilder
         // Build Backward direction using backward lists only
         for (int k = 0; k < bwdCount; k++)
         {
-            var schedulePerStation = stations.Select(st => bwdByStation[st.Id][k]).ToList();
+            // Use k-th aligned group (all stations have the same ListKey)
+            var schedulePerStation = bwdAlignedGroups[k];
             var rowsPerStation = schedulePerStation.Select(s => s.StartTimeToEndStation.Count).ToList();
             var rowCount = rowsPerStation.Min();
 
@@ -238,7 +281,7 @@ public sealed class MetroFullScheduleBuilder : IMetroFullScheduleBuilder
                         {
                             TrainNumber = trainNumber,
                             ListNo = originSch.ListNo,
-                            EndStation = originSch.EndStation, // use origin schedule's terminal
+                            EndStation = terminalFirst, // backward direction goes to first terminal
                             TimeOrigin = originTime,
                             TimeDestination = destTime,
                             IsHoliday = isHoliday,
